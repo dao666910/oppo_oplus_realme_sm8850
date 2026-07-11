@@ -789,15 +789,29 @@ jobs:
           path: ${{ github.workspace }}/kernel_workspace/debug.zip
           archive: false
 
-      - name: 上传 ZIP 工件
-        uses: actions/upload-artifact@v7
+            # ==========================================
+      # 上传 AnyKernel 刷机包 (单文件，不二次压缩)
+      # ==========================================
+      - name: 上传 AnyKernel 刷机包
+        uses: actions/upload-artifact@v4
         with:
-           # --- 修改这一行 ---
-          path: |
-            ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
-            ${{ github.workspace }}/kernel_workspace/artifacts/
-          # --- 修改结束 ---
-          archive: false
+          name: ${{ steps.create_zip.outputs.ak3name }}
+          path: ${{ github.workspace }}/kernel_workspace/${{ steps.create_zip.outputs.ak3name }}.zip
+          archive: false  # 只有单个 zip 文件时可以使用 false，防止 zip 套 zip
+          if-no-files-found: error
+
+      # ==========================================
+      # 上传 vmlinux 和 kallsyms 符号表 (多文件)
+      # ==========================================
+      - name: 上传 vmlinux 和 kallsyms 符号表
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel_Symbols_and_Info
+          path: ${{ github.workspace }}/kernel_workspace/artifacts/
+          # 注意：这里去掉了 archive: false，因为 artifacts 目录下有多个文件
+          if-no-files-found: warn
+          retention-days: 7
+
 
   release:
     needs: build
