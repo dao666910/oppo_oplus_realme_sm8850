@@ -687,6 +687,11 @@ jobs:
 
       - name: 提取 vmlinux 和 kallsyms
         run: |
+          WORKDIR="$(pwd)"
+          export PATH="$WORKDIR/kernel_workspace/clang19/bin:$PATH"
+          export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+          echo "正在检查 vmlinux 是否存在..."
+          ls -lh kernel_workspace/common/out/vmlinux || { echo "vmlinux 未找到！"; exit 1; }
           echo "正在压缩 vmlinux..."
           cd kernel_workspace
           xz -9 -e -T0 common/out/vmlinux -c > vmlinux.xz
