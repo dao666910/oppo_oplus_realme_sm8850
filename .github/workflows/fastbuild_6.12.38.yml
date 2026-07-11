@@ -898,9 +898,34 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "${{ env.TAG_HEAD }}-${{ env.FULL_VERSION }}" \
             --notes-file release_notes.md \
-            ${{ github.workspace }}/release_zips/AnyKernel3_*.zip \
-            ${{ github.workspace }}/release_zips/artifacts/kallsyms.txt \
-            ${{ github.workspace }}/release_zips/artifacts/vmlinux
+            --draft # 先创建为草稿，避免上传失败时留下一个不完整的 Release
 
+          # 3. 逐个上传文件，确保万无一失
+          # 上传刷机包
+          for file in release_zips/AnyKernel3_*.zip; do
+            if [ -f "$file" ]; then
+              echo "📦 正在上传: $file"
+              gh release upload "${{ env.TAG_HEAD }}-${{ env.TIME }}" "$file" --clobber
+            fi
+          done
+
+          # 上传 kallsyms.txt
+          if [ -f "release_zips/artifacts/kallsyms.txt" ]; then
+            echo "📦 正在上传: release_zips/artifacts/kallsyms.txt"
+            gh release upload "${{ env.TAG_HEAD }}-${{ env.TIME }}" "release_zips/artifacts/kallsyms.txt" --clobber
+          else
+            echo "⚠️ 警告: kallsyms.txt 未找到，已跳过。"
+          fi
+
+          # 上传 vmlinux
+          if [ -f "release_zips/artifacts/vmlinux" ]; then
+            echo "📦 正在上传: release_zips/artifacts/vmlinux"
+            gh release upload "${{ env.TAG_HEAD }}-${{ env.TIME }}" "release_zips/artifacts/vmlinux" --clobber
+          else
+            echo "⚠️ 警告: vmlinux 未找到，已跳过。"
+          fi
+
+          # 4. 所有文件上传成功后，将 Release 从草稿状态发布
+          gh release edit "${{ env.TAG_HEAD }}-${{ env.TIME }}" --draft=false
 
  
