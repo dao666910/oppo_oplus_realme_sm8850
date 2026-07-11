@@ -813,7 +813,6 @@ jobs:
             ${{ github.workspace }}/kernel_workspace/kallsyms.txt
             ${{ github.workspace }}/kernel_workspace/System.map
             ${{ github.workspace }}/kernel_workspace/kernel_config
-          archive: false
 
   release:
     needs: build
