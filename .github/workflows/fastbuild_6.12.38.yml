@@ -792,7 +792,11 @@ jobs:
       - name: 上传 ZIP 工件
         uses: actions/upload-artifact@v7
         with:
-          path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip ${{ github.workspace }}/kernel_workspace/artifacts/
+           # --- 修改这一行 ---
+          path: |
+            ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
+            ${{ github.workspace }}/kernel_workspace/artifacts/
+          # --- 修改结束 ---
           archive: false
 
   release:
