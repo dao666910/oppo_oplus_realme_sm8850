@@ -789,26 +789,16 @@ jobs:
           path: ${{ github.workspace }}/kernel_workspace/debug.zip
           archive: false
 
-            # ==========================================
-      # 上传 AnyKernel 刷机包 (单文件，不二次压缩)
+                  # ==========================================
+      # 终极上传步骤：打包刷机包与符号表
       # ==========================================
-      - name: 上传 AnyKernel 刷机包
+      - name: 上传所有构建产物 (刷机包 + 符号表)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.create_zip.outputs.ak3name }}
-          path: ${{ github.workspace }}/kernel_workspace/${{ steps.create_zip.outputs.ak3name }}.zip
-          archive: false  # 只有单个 zip 文件时可以使用 false，防止 zip 套 zip
-          if-no-files-found: error
-
-      # ==========================================
-      # 上传 vmlinux 和 kallsyms 符号表 (多文件)
-      # ==========================================
-      - name: 上传 vmlinux 和 kallsyms 符号表
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel_Symbols_and_Info
-          path: ${{ github.workspace }}/kernel_workspace/artifacts/
-          # 注意：这里去掉了 archive: false，因为 artifacts 目录下有多个文件
+          name: OnePlus_Ace6T_Kernel_Output
+          path: |
+            ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
+            ${{ github.workspace }}/kernel_workspace/artifacts/
           if-no-files-found: warn
           retention-days: 7
 
