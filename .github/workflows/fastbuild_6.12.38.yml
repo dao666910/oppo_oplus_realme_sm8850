@@ -878,3 +878,67 @@ jobs:
             --title "${{ env.TAG_HEAD }}-${{ env.FULL_VERSION }}" \
             --notes-file release_notes.md \
             release_zips/AnyKernel3_*.zip
+      # ==========================================
+      # 提取 vmlinux 和 kallsyms 符号表
+      # ==========================================
+      - name: Extract vmlinux and kallsyms
+        shell: bash
+        run: |
+          echo "=== 开始提取 vmlinux 和 kallsyms ==="
+          
+          # 1. 安装 ARM64 的 binutils (用于解析 ARM64 的 ELF 文件)
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq binutils-aarch64-linux-gnu > /dev/null 2>&1
+
+          # 2. 查找 vmlinux 文件 (排除 .repo 和 .git 目录)
+          VMLINUX_PATH=$(find . -type f -name "vmlinux" -not -path "*/.repo/*" -not -path "*/.git/*" | head -n 1)
+          
+          if [ -z "$VMLINUX_PATH" ]; then
+            echo "::warning::未找到 vmlinux 文件，请确认编译是否成功！"
+            exit 0 
+          fi
+
+          echo "✅ 找到 vmlinux: $VMLINUX_PATH"
+          mkdir -p artifacts
+          cp "$VMLINUX_PATH" artifacts/vmlinux
+
+          # 3. 提取 kallsyms (符号表)
+          echo "⏳ 正在提取 kallsyms 符号表..."
+          # 使用 aarch64-linux-gnu-nm 按地址排序 (-n) 提取符号，并过滤出有效行
+          aarch64-linux-gnu-nm -n "$VMLINUX_PATH" | awk 'NF>=3 && $1 ~ /^[0-9a-f]+$/ {print $1, $2, $3}' > artifacts/kallsyms.txt
+          
+          SYM_COUNT=$(wc -l < artifacts/kallsyms.txt)
+          echo "✅ 成功提取 $SYM_COUNT 个符号到 artifacts/kallsyms.txt"
+          
+          # 显示前 10 个符号作为预览
+          echo "--- kallsyms 预览 (前 10 行) ---"
+          head -n 10 artifacts/kallsyms.txt
+          echo "--------------------------------"
+
+          # 4. 提取 System.map (如果存在)
+          SYSMAP_PATH=$(find . -type f -name "System.map" -not -path "*/.repo/*" -not -path "*/.git/*" | head -n 1)
+          if [ -n "$SYSMAP_PATH" ]; then
+            cp "$SYSMAP_PATH" artifacts/System.map
+            echo "✅ 已复制 System.map"
+          fi
+
+          # 5. 查找并复制 Image (用于打包 boot.img 的原始镜像)
+          IMAGE_PATH=$(find . -type f -name "Image" -not -path "*/.repo/*" -not -path "*/.git/*" | head -n 1)
+          if [ -n "$IMAGE_PATH" ]; then
+            cp "$IMAGE_PATH" artifacts/Image
+            echo "✅ 已复制 Image"
+          fi
+
+          echo "=== 提取完成，产物列表 ==="
+          ls -lh artifacts/
+
+      # ==========================================
+      # 上传产物到 GitHub Actions 供下载
+      # ==========================================
+      - name: Upload Kernel Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlus_Ace6T_Kernel_Symbols
+          path: artifacts/
+          retention-days: 7
+          compression-level: 9
