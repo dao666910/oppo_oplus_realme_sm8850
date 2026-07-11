@@ -668,17 +668,6 @@ jobs:
           export CC="$(pwd)/cc-wrapper" && export LD="$(pwd)/ld-wrapper" &&
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" OBJCOPY="llvm-objcopy" O=out Image
           
-           # --- 在这里插入新代码 ---
-          echo "=== 正在提取 vmlinux 和 kallsyms ==="
-          mkdir -p ../artifacts
-          cp ./out/vmlinux ../artifacts/
-          echo "✅ 已复制 vmlinux"
-
-          # 使用 aarch64-linux-gnu-nm 提取符号表
-          aarch64-linux-gnu-nm -n ./out/vmlinux | awk 'NF>=3 && $1 ~ /^[0-9a-f]+$/ {print $1, $2, $3}' > ../artifacts/kallsyms.txt
-          echo "✅ 已生成 kallsyms.txt"
-          # --- 插入代码结束 ---
-          
           # 编译后时间劫持二次校验
           echo "--- 编译后环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- 编译后环境文件时间戳: ---"
@@ -695,6 +684,20 @@ jobs:
           ccache -s
           echo "编译后空间:"
           df -h
+
+      - name: 提取 vmlinux 和 kallsyms
+        run: |
+          echo "正在压缩 vmlinux..."
+          cd kernel_workspace
+          xz -9 -e -T0 common/out/vmlinux -c > vmlinux.xz
+          echo "vmlinux 压缩完成，大小：$(ls -lh vmlinux.xz | awk '{print $5}')"
+          echo "正在生成 kallsyms 符号表..."
+          llvm-nm common/out/vmlinux | sort > kallsyms.txt
+          echo "kallsyms 生成完成，符号总数：$(wc -l < kallsyms.txt)"
+          echo "正在复制 System.map 和 .config..."
+          cp common/out/System.map ./
+          cp common/out/.config ./kernel_config
+          echo "vmlinux/kallsyms 提取完成"
 
       - name: 保存新的 ccache 缓存
         if: inputs.ccache_update || steps.ccache-restore.outputs.cache-hit != 'true'
@@ -789,19 +792,28 @@ jobs:
           path: ${{ github.workspace }}/kernel_workspace/debug.zip
           archive: false
 
-                  # ==========================================
-      # 终极上传步骤：打包刷机包与符号表
-      # ==========================================
-      - name: 上传所有构建产物 (刷机包 + 符号表)
-        uses: actions/upload-artifact@v4
+      - name: 上传 ZIP 工件
+        uses: actions/upload-artifact@v7
         with:
-          name: OnePlus_Ace6T_Kernel_Output
-          path: |
-            ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
-            ${{ github.workspace }}/kernel_workspace/artifacts/
-          if-no-files-found: warn
-          retention-days: 7
+          path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
+          archive: false
 
+      - name: 上传 vmlinux 工件
+        uses: actions/upload-artifact@v7
+        with:
+          name: vmlinux
+          path: ${{ github.workspace }}/kernel_workspace/vmlinux.xz
+          archive: false
+
+      - name: 上传 kallsyms 和 System.map 工件
+        uses: actions/upload-artifact@v7
+        with:
+          name: kallsyms
+          path: |
+            ${{ github.workspace }}/kernel_workspace/kallsyms.txt
+            ${{ github.workspace }}/kernel_workspace/System.map
+            ${{ github.workspace }}/kernel_workspace/kernel_config
+          archive: false
 
   release:
     needs: build
@@ -813,13 +825,23 @@ jobs:
       
     steps:
       - name: 下载 ZIP 工件
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          name: OnePlus_Ace6T_Kernel_Output
+          name: ${{ needs.build.outputs.ak3name }}
           path: ./release_zips
           skip-decompress: true
 
+      - name: 下载 vmlinux 工件
+        uses: actions/download-artifact@v8
+        with:
+          name: vmlinux
+          path: ./release_zips
 
+      - name: 下载 kallsyms 工件
+        uses: actions/download-artifact@v8
+        with:
+          name: kallsyms
+          path: ./release_zips
 
       - name: 设置环境变量
         run: |
@@ -898,34 +920,12 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "${{ env.TAG_HEAD }}-${{ env.FULL_VERSION }}" \
             --notes-file release_notes.md \
-            --draft # 先创建为草稿，避免上传失败时留下一个不完整的 Release
-
-          # 3. 逐个上传文件，确保万无一失
-          # 上传刷机包
-          for file in release_zips/AnyKernel3_*.zip; do
-            if [ -f "$file" ]; then
-              echo "📦 正在上传: $file"
-              gh release upload "${{ env.TAG_HEAD }}-${{ env.TIME }}" "$file" --clobber
-            fi
-          done
-
-          # 上传 kallsyms.txt
-          if [ -f "release_zips/artifacts/kallsyms.txt" ]; then
-            echo "📦 正在上传: release_zips/artifacts/kallsyms.txt"
-            gh release upload "${{ env.TAG_HEAD }}-${{ env.TIME }}" "release_zips/artifacts/kallsyms.txt" --clobber
-          else
-            echo "⚠️ 警告: kallsyms.txt 未找到，已跳过。"
-          fi
-
-          # 上传 vmlinux
-          if [ -f "release_zips/artifacts/vmlinux" ]; then
-            echo "📦 正在上传: release_zips/artifacts/vmlinux"
-            gh release upload "${{ env.TAG_HEAD }}-${{ env.TIME }}" "release_zips/artifacts/vmlinux" --clobber
-          else
-            echo "⚠️ 警告: vmlinux 未找到，已跳过。"
-          fi
-
-          # 4. 所有文件上传成功后，将 Release 从草稿状态发布
-          gh release edit "${{ env.TAG_HEAD }}-${{ env.TIME }}" --draft=false
-
+            release_zips/AnyKernel3_*.zip \
+            release_zips/vmlinux.xz \
+            release_zips/kallsyms.txt \
+            release_zips/System.map \
+            release_zips/kernel_config
+      # ==========================================
+      # 提取 vmlinux 和 kallsyms 符号表
+      # ==========================================
  
