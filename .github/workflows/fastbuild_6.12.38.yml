@@ -690,18 +690,19 @@ jobs:
           WORKDIR="$(pwd)"
           export PATH="$WORKDIR/kernel_workspace/clang19/bin:$PATH"
           export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
-          echo "正在检查 vmlinux 是否存在..."
+          echo "正在检查 vmlinux..."
           ls -lh kernel_workspace/common/out/vmlinux || { echo "vmlinux 未找到！"; exit 1; }
+          mkdir -p kernel_workspace/debug_symbols
           echo "正在压缩 vmlinux..."
-          cd kernel_workspace
-          xz -9 -e -T0 common/out/vmlinux -c > vmlinux.xz
-          echo "vmlinux 压缩完成，大小：$(ls -lh vmlinux.xz | awk '{print $5}')"
-          echo "正在生成 kallsyms 符号表..."
-          llvm-nm common/out/vmlinux | sort > kallsyms.txt
-          echo "kallsyms 生成完成，符号总数：$(wc -l < kallsyms.txt)"
+          xz -9 -e -T0 kernel_workspace/common/out/vmlinux -c > kernel_workspace/debug_symbols/vmlinux.xz
+          echo "vmlinux.xz 大小: $(ls -lh kernel_workspace/debug_symbols/vmlinux.xz | awk '{print $5}')"
+          echo "正在生成 kallsyms.txt..."
+          llvm-nm kernel_workspace/common/out/vmlinux | sort > kernel_workspace/debug_symbols/kallsyms.txt
+          echo "符号总数: $(wc -l < kernel_workspace/debug_symbols/kallsyms.txt)"
           echo "正在复制 System.map 和 .config..."
-          cp common/out/System.map ./
-          cp common/out/.config ./kernel_config
+          cp kernel_workspace/common/out/System.map kernel_workspace/debug_symbols/
+          cp kernel_workspace/common/out/.config kernel_workspace/debug_symbols/kernel_config
+          ls -la kernel_workspace/debug_symbols/
           echo "vmlinux/kallsyms 提取完成"
 
       - name: 保存新的 ccache 缓存
@@ -803,21 +804,11 @@ jobs:
           path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
           archive: false
 
-      - name: 上传 vmlinux 工件
+      - name: 上传调试符号工件 (vmlinux + kallsyms + System.map + .config)
         uses: actions/upload-artifact@v7
         with:
-          name: vmlinux
-          path: ${{ github.workspace }}/kernel_workspace/vmlinux.xz
-          archive: false
-
-      - name: 上传 kallsyms 和 System.map 工件
-        uses: actions/upload-artifact@v7
-        with:
-          name: kallsyms
-          path: |
-            ${{ github.workspace }}/kernel_workspace/kallsyms.txt
-            ${{ github.workspace }}/kernel_workspace/System.map
-            ${{ github.workspace }}/kernel_workspace/kernel_config
+          name: debug-symbols
+          path: ${{ github.workspace }}/kernel_workspace/debug_symbols/
 
   release:
     needs: build
@@ -835,16 +826,10 @@ jobs:
           path: ./release_zips
           skip-decompress: true
 
-      - name: 下载 vmlinux 工件
+      - name: 下载调试符号工件
         uses: actions/download-artifact@v8
         with:
-          name: vmlinux
-          path: ./release_zips
-
-      - name: 下载 kallsyms 工件
-        uses: actions/download-artifact@v8
-        with:
-          name: kallsyms
+          name: debug-symbols
           path: ./release_zips
 
       - name: 设置环境变量
